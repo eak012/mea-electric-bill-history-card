@@ -1,5 +1,5 @@
 /* MEA Electric Bill History Card
- * Version: 2.0.0
+ * Version: 2.0.1
  * Custom Lovelace Card to display current month live summary and historical recorded bills.
  */
 
@@ -47,9 +47,9 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     const cfg = this._config;
 
     // 1. ดึงค่าจาก Live Sensors สำหรับรอบเดือนปัจจุบัน
-    const currEnergyState = cfg.entity_current_energy ? this._hass.states[cfg.entity_current_energy] : null;
-    const solarEnergyState = cfg.entity_solar_energy ? this._hass.states[cfg.entity_solar_energy] : null;
-    const totalCostState = cfg.entity_total_cost ? this._hass.states[cfg.entity_total_cost] : null;
+    const currEnergyState = cfg.entity_current_energy && this._hass.states[cfg.entity_current_energy] ? this._hass.states[cfg.entity_current_energy] : null;
+    const solarEnergyState = cfg.entity_solar_energy && this._hass.states[cfg.entity_solar_energy] ? this._hass.states[cfg.entity_solar_energy] : null;
+    const totalCostState = cfg.entity_total_cost && this._hass.states[cfg.entity_total_cost] ? this._hass.states[cfg.entity_total_cost] : null;
 
     const currEnergy = currEnergyState && !isNaN(parseFloat(currEnergyState.state)) ? parseFloat(currEnergyState.state).toFixed(2) : "0.00";
     const solarEnergy = solarEnergyState && !isNaN(parseFloat(solarEnergyState.state)) ? parseFloat(solarEnergyState.state).toFixed(2) : "0.00";
@@ -59,7 +59,7 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     const currentMonthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')} (รอบปัจจุบัน)`;
 
     // 2. ดึงประวัติย้อนหลังสะสมจาก input_text
-    const historyState = cfg.entity_history ? this._hass.states[cfg.entity_history] : null;
+    const historyState = cfg.entity_history && this._hass.states[cfg.entity_history] ? this._hass.states[cfg.entity_history] : null;
     const rawText = historyState ? historyState.state : "";
     const records = rawText.split('\\n').filter(r => r.trim() !== '' && r !== 'unknown' && r !== 'unavailable');
 
@@ -141,9 +141,9 @@ class MeaElectricBillHistoryCardEditor extends HTMLElement {
   }
 
   _valueChanged(field, value) {
+    if (!this._config) return;
     this._config = { ...this._config, [field]: value };
     this._emit();
-    this._render();
   }
 
   _render() {
@@ -155,27 +155,27 @@ class MeaElectricBillHistoryCardEditor extends HTMLElement {
       <style>
         .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
         label { font-size: 0.85em; color: var(--secondary-text-color); }
-        input { padding: 6px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
+        input { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
       </style>
       <div class="row">
         <label>Title</label>
-        <input id="title" type="text" value="${cfg.title}" />
+        <input id="title" type="text" value="${cfg.title || ''}" />
       </div>
       <div class="row">
         <label>History Entity (input_text ไว้เก็บประวัติถาวร)</label>
-        <input id="entity_history" type="text" list="sensor-options" value="${cfg.entity_history}" placeholder="input_text.monthly_bill_history" />
+        <input id="entity_history" type="text" list="sensor-options" value="${cfg.entity_history || ''}" placeholder="input_text.monthly_bill_history" />
       </div>
       <div class="row">
         <label>Current Month Energy Sensor (sensor.current_energy)</label>
-        <input id="entity_current_energy" type="text" list="sensor-options" value="${cfg.entity_current_energy}" placeholder="sensor.current_energy" />
+        <input id="entity_current_energy" type="text" list="sensor-options" value="${cfg.entity_current_energy || ''}" placeholder="sensor.current_energy" />
       </div>
       <div class="row">
         <label>Solar Energy Sensor (ถ้ามี)</label>
-        <input id="entity_solar_energy" type="text" list="sensor-options" value="${cfg.entity_solar_energy}" placeholder="sensor.solar_energy_month" />
+        <input id="entity_solar_energy" type="text" list="sensor-options" value="${cfg.entity_solar_energy || ''}" placeholder="sensor.solar_energy_month" />
       </div>
       <div class="row">
         <label>Total Month Cost Sensor (sensor.total_month_cost)</label>
-        <input id="entity_total_cost" type="text" list="sensor-options" value="${cfg.entity_total_cost}" placeholder="sensor.total_month_cost" />
+        <input id="entity_total_cost" type="text" list="sensor-options" value="${cfg.entity_total_cost || ''}" placeholder="sensor.total_month_cost" />
       </div>
 
       <datalist id="sensor-options">
@@ -184,11 +184,11 @@ class MeaElectricBillHistoryCardEditor extends HTMLElement {
     `;
 
     const $ = (id) => this.shadowRoot.getElementById(id);
-    $("title").addEventListener("change", (e) => this._valueChanged("title", e.target.value));
-    $("entity_history").addEventListener("change", (e) => this._valueChanged("entity_history", e.target.value));
-    $("entity_current_energy").addEventListener("change", (e) => this._valueChanged("entity_current_energy", e.target.value));
-    $("entity_solar_energy").addEventListener("change", (e) => this._valueChanged("entity_solar_energy", e.target.value));
-    $("entity_total_cost").addEventListener("change", (e) => this._valueChanged("entity_total_cost", e.target.value));
+    if ($("title")) $("title").addEventListener("input", (e) => this._valueChanged("title", e.target.value));
+    if ($("entity_history")) $("entity_history").addEventListener("input", (e) => this._valueChanged("entity_history", e.target.value));
+    if ($("entity_current_energy")) $("entity_current_energy").addEventListener("input", (e) => this._valueChanged("entity_current_energy", e.target.value));
+    if ($("entity_solar_energy")) $("entity_solar_energy").addEventListener("input", (e) => this._valueChanged("entity_solar_energy", e.target.value));
+    if ($("entity_total_cost")) $("entity_total_cost").addEventListener("input", (e) => this._valueChanged("entity_total_cost", e.target.value));
   }
 
   _sensorOptions() {
