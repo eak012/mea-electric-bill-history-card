@@ -1,6 +1,6 @@
 /* MEA Electric Bill History Card
- * Version: 2.0.1
- * Custom Lovelace Card to display current month live summary and historical recorded bills.
+ * Version: 2.1.0
+ * Custom Lovelace Card to display current month live summary and historical recorded bills in a table.
  */
 
 class MeaElectricBillHistoryCard extends HTMLElement {
@@ -56,63 +56,105 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     const totalCost = totalCostState && !isNaN(parseFloat(totalCostState.state)) ? parseFloat(totalCostState.state).toFixed(2) : "0.00";
 
     const now = new Date();
-    const currentMonthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')} (รอบปัจจุบัน)`;
+    const currentMonthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     // 2. ดึงประวัติย้อนหลังสะสมจาก input_text
     const historyState = cfg.entity_history && this._hass.states[cfg.entity_history] ? this._hass.states[cfg.entity_history] : null;
     const rawText = historyState ? historyState.state : "";
     const records = rawText.split('\\n').filter(r => r.trim() !== '' && r !== 'unknown' && r !== 'unavailable');
 
-    const historyRows = records.length > 0
-      ? records.map(rec => `<div class="history-item past">📌 ${rec.trim()}</div>`).join('')
-      : '<div class="empty">ยังไม่มีประวัติในอดีตที่บันทึกไว้</div>';
+    // แปลงข้อมูลย้อนหลังเป็นแถวตาราง
+    const pastRows = records.map(rec => {
+      const parts = rec.split('|').map(p => p.trim());
+      const month = parts[0] || '-';
+      const grid = parts[1] ? parts[1].replace(/[^0-9.]/g, '') : '-';
+      const solar = parts[2] ? parts[2].replace(/[^0-9.]/g, '') : '-';
+      const cost = parts[3] ? parts[3].replace(/[^0-9.]/g, '') : '-';
+
+      return `
+        <tr>
+          <td><b>${month}</b></td>
+          <td class="num">${grid} <small>kWh</small></td>
+          <td class="num solar-txt">-${solar} <small>kWh</small></td>
+          <td class="num cost-txt">${cost} <small>฿</small></td>
+        </tr>
+      `;
+    }).join('');
 
     this.shadowRoot.innerHTML = `
       <style>
         ha-card { padding: 16px; }
         .title { font-weight: bold; font-size: 1.1em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-        .history-list { display: flex; flex-direction: column; gap: 8px; }
-        .history-item {
-          border-radius: 6px;
-          padding: 10px 12px;
+        .title ha-icon { color: var(--primary-color, #03a9f4); }
+        
+        table {
+          width: 100%;
+          border-collapse: collapse;
           font-size: 0.9em;
-          line-height: 1.5;
         }
-        .history-item.current {
-          background: var(--secondary-background-color, #f0f4f8);
-          border-left: 4px solid var(--primary-color, #03a9f4);
+        th, td {
+          padding: 8px 4px;
+          border-bottom: 1px solid var(--divider-color, #e0e0e0);
+        }
+        th {
+          color: var(--secondary-text-color);
+          font-weight: 500;
+          text-align: left;
+        }
+        th.num, td.num {
+          text-align: right;
+        }
+        .th-icon {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+        }
+        .th-icon ha-icon {
+          --mdc-icon-size: 16px;
+        }
+        tr.current-row {
+          background-color: var(--secondary-background-color, #f0f4f8);
           font-weight: 500;
         }
-        .history-item.past {
-          background: var(--card-background-color, #fff);
-          border: 1px solid var(--divider-color, #e0e0e0);
-          border-left: 4px solid #888;
-        }
-        .tag {
-          font-size: 0.75em;
+        .badge-live {
+          font-size: 0.7em;
           background: var(--primary-color, #03a9f4);
           color: #fff;
-          padding: 1px 6px;
-          border-radius: 4px;
-          margin-left: 6px;
+          padding: 1px 4px;
+          border-radius: 3px;
+          margin-left: 4px;
         }
-        .empty { color: var(--secondary-text-color); font-size: 0.85em; font-style: italic; padding: 4px 0; }
         .solar-txt { color: var(--success-color, #4caf50); }
+        .cost-txt { font-weight: bold; }
+        ha-icon.icon-grid { color: var(--warning-color, #ff9800); }
+        ha-icon.icon-solar { color: var(--success-color, #4caf50); }
+        ha-icon.icon-cash { color: var(--primary-color, #03a9f4); }
       </style>
       <ha-card>
-        <div class="title">📊 ${cfg.title}</div>
-        <div class="history-list">
-          <!-- แสดงยอดยกมาของเดือนปัจจุบันเป็นตัวชูโรง -->
-          <div class="history-item current">
-            ⚡ <b>${currentMonthLabel}</b><span class="tag">กำลังสะสม</span><br/>
-            ใช้ไฟ: ${currEnergy} kWh 
-            ${cfg.entity_solar_energy ? `| <span class="solar-txt">☀️ Solar: -${solarEnergy} kWh</span>` : ''} 
-            | <b>ค่าไฟประมาณการ: ${totalCost} ฿</b>
-          </div>
-
-          <!-- แสดงประวัติย้อนหลังเดือนก่อนๆ -->
-          ${historyRows}
+        <div class="title">
+          <ha-icon icon="mdi:chart-box-outline"></ha-icon>
+          <span>${cfg.title}</span>
         </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th><div class="th-icon"><ha-icon icon="mdi:calendar-month"></ha-icon> เดือน</div></th>
+              <th class="num"><div class="th-icon"><ha-icon icon="mdi:transmission-tower" class="icon-grid"></ha-icon> ใช้ไฟ</div></th>
+              <th class="num"><div class="th-icon"><ha-icon icon="mdi:solar-power" class="icon-solar"></ha-icon> Solar</div></th>
+              <th class="num"><div class="th-icon"><ha-icon icon="mdi:cash-multiple" class="icon-cash"></ha-icon> ค่าไฟ</div></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="current-row">
+              <td><b>${currentMonthLabel}</b><span class="badge-live">สด</span></td>
+              <td class="num">${currEnergy} <small>kWh</small></td>
+              <td class="num solar-txt">-${solarEnergy} <small>kWh</small></td>
+              <td class="num cost-txt">${totalCost} <small>฿</small></td>
+            </tr>
+            ${pastRows}
+          </tbody>
+        </table>
       </ha-card>
     `;
   }
@@ -207,5 +249,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "mea-electric-bill-history-card",
   name: "MEA Electric Bill History Card",
-  description: "Display current month and recorded history of electric bill.",
+  description: "Display current month and recorded history of electric bill in a table.",
 });
