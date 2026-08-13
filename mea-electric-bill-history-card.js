@@ -1,6 +1,6 @@
 /* MEA Electric Bill History Card
- * Version: 2.1.0
- * Custom Lovelace Card to display current month live summary and historical recorded bills in a table.
+ * Version: 2.2.0
+ * Custom Lovelace Card to display current month live summary and historical recorded bills in a table with row limit config.
  */
 
 class MeaElectricBillHistoryCard extends HTMLElement {
@@ -16,6 +16,7 @@ class MeaElectricBillHistoryCard extends HTMLElement {
       entity_current_energy: "sensor.current_energy",
       entity_solar_energy: "",
       entity_total_cost: "sensor.total_month_cost",
+      max_rows: 3,
     };
   }
 
@@ -27,6 +28,7 @@ class MeaElectricBillHistoryCard extends HTMLElement {
       entity_current_energy: config.entity_current_energy || "",
       entity_solar_energy: config.entity_solar_energy || "",
       entity_total_cost: config.entity_total_cost || "",
+      max_rows: config.max_rows ? Number(config.max_rows) : 3,
     };
     this._render();
   }
@@ -58,10 +60,13 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     const now = new Date();
     const currentMonthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // 2. ดึงประวัติย้อนหลังสะสมจาก input_text
+    // 2. ดึงประวัติย้อนหลังสะสมจาก input_text และจำกัดจำนวนแถวตาม max_rows
     const historyState = cfg.entity_history && this._hass.states[cfg.entity_history] ? this._hass.states[cfg.entity_history] : null;
     const rawText = historyState ? historyState.state : "";
-    const records = rawText.split('\\n').filter(r => r.trim() !== '' && r !== 'unknown' && r !== 'unavailable');
+    const records = rawText
+      .split('\\n')
+      .filter(r => r.trim() !== '' && r !== 'unknown' && r !== 'unavailable')
+      .slice(0, cfg.max_rows); // จำกัดจำนวนรายการย้อนหลังตามที่เลือก (3, 6, 9, 12)
 
     // แปลงข้อมูลย้อนหลังเป็นแถวตาราง
     const pastRows = records.map(rec => {
@@ -197,11 +202,20 @@ class MeaElectricBillHistoryCardEditor extends HTMLElement {
       <style>
         .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
         label { font-size: 0.85em; color: var(--secondary-text-color); }
-        input { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
+        input, select { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
       </style>
       <div class="row">
         <label>Title</label>
         <input id="title" type="text" value="${cfg.title || ''}" />
+      </div>
+      <div class="row">
+        <label>แสดงประวัติย้อนหลัง (เดือน)</label>
+        <select id="max_rows">
+          <option value="3" ${cfg.max_rows == 3 ? 'selected' : ''}>ย้อนหลัง 3 เดือน</option>
+          <option value="6" ${cfg.max_rows == 6 ? 'selected' : ''}>ย้อนหลัง 6 เดือน</option>
+          <option value="9" ${cfg.max_rows == 9 ? 'selected' : ''}>ย้อนหลัง 9 เดือน</option>
+          <option value="12" ${cfg.max_rows == 12 ? 'selected' : ''}>ย้อนหลัง 12 เดือน (1 ปี)</option>
+        </select>
       </div>
       <div class="row">
         <label>History Entity (input_text ไว้เก็บประวัติถาวร)</label>
@@ -227,6 +241,7 @@ class MeaElectricBillHistoryCardEditor extends HTMLElement {
 
     const $ = (id) => this.shadowRoot.getElementById(id);
     if ($("title")) $("title").addEventListener("input", (e) => this._valueChanged("title", e.target.value));
+    if ($("max_rows")) $("max_rows").addEventListener("change", (e) => this._valueChanged("max_rows", Number(e.target.value)));
     if ($("entity_history")) $("entity_history").addEventListener("input", (e) => this._valueChanged("entity_history", e.target.value));
     if ($("entity_current_energy")) $("entity_current_energy").addEventListener("input", (e) => this._valueChanged("entity_current_energy", e.target.value));
     if ($("entity_solar_energy")) $("entity_solar_energy").addEventListener("input", (e) => this._valueChanged("entity_solar_energy", e.target.value));
@@ -249,5 +264,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "mea-electric-bill-history-card",
   name: "MEA Electric Bill History Card",
-  description: "Display current month and recorded history of electric bill in a table.",
+  description: "Display current month and recorded history of electric bill in a table with row limits.",
 });
