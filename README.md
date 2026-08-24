@@ -81,12 +81,14 @@ mode: single
 ```
 รูปแบบข้อมูลที่บันทึก: YYYY-MM | หน่วยไฟ | หน่วยโซลาร์ | ค่าไฟ
 
-เช่น 2026-08 | 160.15 | 153.85 | 621.37
+เช่น 2026-08 | 314.43 | 153.85 | 621.37
 
 ⚙️ ตัวอย่างการใช้งานใน Dashboard (Lovelace YAML)
 สามารถเพิ่มผ่าน UI Dashboard ได้เลย หรือใช้ YAML Configuration:
 
-```type: custom:mea-electric-bill-history-card
+YAML
+```yaml
+type: custom:mea-electric-bill-history-card
 title: สถิติค่าไฟฟ้าประจําเดือน
 entity_history: input_text.monthly_bill_history
 entity_current_energy: sensor.current_energy
@@ -94,3 +96,18 @@ entity_solar_energy: sensor.monthly_pv
 entity_total_cost: sensor.total_month_cost
 max_rows: 3
 ```
+
+📋 คำอธิบายพารามิเตอร์ (Configuration Options)
+| ชื่อฟิลด์ (Field) | ชนิด (Type) | ค่าเริ่มต้น | รายละเอียด |
+| :--- | :---: | :---: | :--- |
+| `type` | string | **จำเป็น** | `custom:mea-electric-bill-history-card` |
+| `title` | string | `สถิติค่าไฟฟ้าประจําเดือน` | ชื่อหัวข้อที่จะแสดงด้านบนของการ์ด |
+| `entity_history` | string | `input_text.monthly_bill_history` | Helper `input_text` ที่เก็บประวัติย้อนหลัง |
+| `entity_current_energy` | string | - | เซนเซอร์หน่วยไฟฟ้าที่ใช้ในรอบปัจจุบัน (kWh) |
+| `entity_solar_energy` | string | - | เซนเซอร์หน่วยไฟฟ้าจากโซลาร์เซลล์ในรอบปัจจุบัน (kWh) *(เว้นว่างได้)* |
+| `entity_total_cost` | string | - | เซนเซอร์ยอดเงินค่าไฟฟ้าในรอบปัจจุบัน (บาท) |
+| `max_rows` | number | `3` | จำนวนรายการประวัติย้อนหลังที่ต้องการแสดง (3, 6, 9, 12 เดือน) |
+
+
+📝 License
+This project is open-source under the MIT License.
