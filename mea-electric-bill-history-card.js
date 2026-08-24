@@ -1,7 +1,7 @@
 /* MEA Electric Bill History Card
- * Version: 3.0.0
- * Custom Lovelace Card to display current cycle live summary and historical recorded bills.
- * Features: Configurable billing cycle cut-off date & time, auto Net calculation, and visual spike prevention.
+ * Version: 3.1.0
+ * Custom Lovelace Card to display current cycle live summary and recorded bills.
+ * Fix: Smart parser for 3-part / 4-part history formats and configurable cut-off date & time.
  */
 
 class MeaElectricBillHistoryCard extends HTMLElement {
@@ -49,10 +49,12 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     return 4;
   }
 
-  // คำนวณ Label รอบบิลปัจจุบันตามวัน/เวลาตัดรอบ
+  // คำนวณช่วงรอบบิลตามวันและเวลาตัดรอบ
   _getCurrentCycleLabel(cutoffDay, cutoffTime) {
     const now = new Date();
-    const [cutHour, cutMinute] = cutoffTime.split(":").map(Number);
+    const timeParts = (cutoffTime || "08:30").split(":");
+    const cutHour = parseInt(timeParts[0], 10) || 0;
+    const cutMinute = parseInt(timeParts[1], 10) || 0;
     
     const cutOffThisMonth = new Date(now.getFullYear(), now.getMonth(), cutoffDay, cutHour, cutMinute, 0);
     let cycleStart, cycleEnd;
@@ -69,13 +71,20 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     return `${fmt(cycleStart)} - ${fmt(cycleEnd)}`;
   }
 
+  // ดึงเฉพาะตัวเลขและจุดทศนิยม
+  _extractNumber(str) {
+    if (!str) return "-";
+    const matches = str.match(/[0-9]+(?:\.[0-9]+)?/);
+    return matches ? matches[0] : "-";
+  }
+
   _render() {
     if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
 
     const cfg = this._config;
 
-    // 1. ดึงค่าจาก Live Sensors
+    // 1. ดึงข้อมูล Live Sensors ประจำรอบปัจจุบัน
     const currEnergyState = cfg.entity_current_energy && this._hass.states[cfg.entity_current_energy] ? this._hass.states[cfg.entity_current_energy] : null;
     const solarEnergyState = cfg.entity_solar_energy && this._hass.states[cfg.entity_solar_energy] ? this._hass.states[cfg.entity_solar_energy] : null;
     const totalCostState = cfg.entity_total_cost && this._hass.states[cfg.entity_total_cost] ? this._hass.states[cfg.entity_total_cost] : null;
@@ -84,7 +93,7 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     let rawSolar = solarEnergyState && !isNaN(parseFloat(solarEnergyState.state)) ? Math.abs(parseFloat(solarEnergyState.state)) : 0;
     const totalCost = totalCostState && !isNaN(parseFloat(totalCostState.state)) ? parseFloat(totalCostState.state).toFixed(2) : "0.00";
 
-    // คำนวณ Net Energy (Grid - Solar) พร้อมระบบกันค่ากระโดดติดลบ
+    // คำนวณ Net Energy (Grid - Solar)
     let finalGrid = rawGrid;
     if (cfg.calc_net) {
       finalGrid = Math.max(0, rawGrid - rawSolar);
@@ -97,23 +106,45 @@ class MeaElectricBillHistoryCard extends HTMLElement {
     // 2. ดึงประวัติย้อนหลังสะสมจาก input_text
     const historyState = cfg.entity_history && this._hass.states[cfg.entity_history] ? this._hass.states[cfg.entity_history] : null;
     const rawText = historyState ? historyState.state : "";
-    const records = rawText
-      .split('\n')
-      .filter(r => r.trim() !== '' && r !== 'unknown' && r !== 'unavailable')
+    
+    // รองรับทั้ง \n จริง และข้อความที่เป็น literal "\n"
+    const lines = rawText
+      .split(/\r?\n|\\n/)
+      .map(r => r.trim())
+      .filter(r => r !== '' && r !== 'unknown' && r !== 'unavailable')
       .slice(0, cfg.max_rows);
 
-    const pastRows = records.map(rec => {
+    // Smart Parser: รองรับทั้งแบบ 3 ส่วน (ไม่มี Solar) และ 4 ส่วน (มี Solar)
+    const pastRows = lines.map(rec => {
       const parts = rec.split('|').map(p => p.trim());
-      const month = parts[0] || '-';
-      const grid = parts[1] ? parts[1].replace(/[^0-9.]/g, '') : '-';
-      const solar = parts[2] ? parts[2].replace(/[^0-9.]/g, '') : '-';
-      const cost = parts[3] ? parts[3].replace(/[^0-9.]/g, '') : '-';
+      let month = parts[0] || '-';
+      let grid = '-';
+      let solar = '-';
+      let cost = '-';
+
+      if (parts.length >= 4) {
+        // รูปแบบ 4 ส่วน: เดือน | พลังงาน | Solar | ค่าไฟ
+        grid = this._extractNumber(parts[1]);
+        solar = this._extractNumber(parts[2]);
+        cost = this._extractNumber(parts[3]);
+      } else if (parts.length === 3) {
+        // รูปแบบ 3 ส่วน: เดือน | พลังงาน: 160.15 kWh | ค่าไฟ: 621.37 บาท
+        grid = this._extractNumber(parts[1]);
+        solar = "-"; // ไม่มีข้อมูล Solar ในประวัติ
+        cost = this._extractNumber(parts[2]);
+      } else if (parts.length === 2) {
+        grid = this._extractNumber(parts[1]);
+      }
+
+      const solarCell = (solar !== '-' && solar !== '') 
+        ? `<span class="solar-txt">-${solar}</span> <small>kWh</small>` 
+        : `<span style="color: var(--secondary-text-color);">-</span>`;
 
       return `
         <tr>
           <td><b>${month}</b></td>
           <td class="num">${grid} <small>kWh</small></td>
-          <td class="num solar-txt">-${solar} <small>kWh</small></td>
+          <td class="num">${solarCell}</td>
           <td class="num cost-txt">${cost} <small>฿</small></td>
         </tr>
       `;
@@ -176,14 +207,14 @@ class MeaElectricBillHistoryCard extends HTMLElement {
             <ha-icon icon="mdi:chart-box-outline"></ha-icon>
             <span>${cfg.title}</span>
           </div>
-          <div class="reset-info">ตัดรอบ: ทุกวันที่ ${cfg.billing_day} (${cfg.billing_time})</div>
+          <div class="reset-info">ตัดรอบ: ทุกวันที่ ${cfg.billing_day} (${cfg.billing_time} น.)</div>
         </div>
 
         <table>
           <thead>
             <tr>
               <th><div class="th-icon"><ha-icon icon="mdi:calendar-month"></ha-icon> รอบบิล</div></th>
-              <th class="num"><div class="th-icon"><ha-icon icon="mdi:transmission-tower" class="icon-grid"></ha-icon> ใช้ไฟสุทธิ</div></th>
+              <th class="num"><div class="th-icon"><ha-icon icon="mdi:transmission-tower" class="icon-grid"></ha-icon> ${cfg.calc_net ? 'ใช้สุทธิ' : 'ใช้ไฟ'}</div></th>
               <th class="num"><div class="th-icon"><ha-icon icon="mdi:solar-power" class="icon-solar"></ha-icon> Solar</div></th>
               <th class="num"><div class="th-icon"><ha-icon icon="mdi:cash-multiple" class="icon-cash"></ha-icon> ค่าไฟ</div></th>
             </tr>
@@ -192,7 +223,7 @@ class MeaElectricBillHistoryCard extends HTMLElement {
             <tr class="current-row">
               <td><b>${currentMonthLabel}</b><span class="badge-live">สด</span></td>
               <td class="num">${currEnergyDisplay} <small>kWh</small></td>
-              <td class="num solar-txt">-${solarEnergyDisplay} <small>kWh</small></td>
+              <td class="num"><span class="solar-txt">-${solarEnergyDisplay}</span> <small>kWh</small></td>
               <td class="num cost-txt">${totalCost} <small>฿</small></td>
             </tr>
             ${pastRows}
